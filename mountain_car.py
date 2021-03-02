@@ -5,6 +5,7 @@ from datetime import datetime
 from agent import Agent
 import keyboard
 from csv_writer import CsvWriter
+import time
 class MountainCar:
     def __init__(self):
         self._output_directory = "data/{}".format(datetime.now().strftime("%d%m%H%M%S"))
@@ -28,18 +29,18 @@ class MountainCar:
         print('Current Reward: {}'.format(current_reward))
         print('Total Reward: {}'.format(self._episode_total_reward))
 
-    def run_tick(self):#Is tick the right termonology here?
-        self._env.render()
+    def run_tick(self):
+        # self._env.render()
         action, action_was_random = self._agent.get_action(self._state)
         self._current_episode_actions.append(action)
         next_state, reward, self._done, _ = self._env.step(action)  
         if next_state[0] >= self._target_position:
-            new_reward = 1000
+            new_reward = 200
             self._successful = True
         else:
-            new_reward = reward * (self._target_position - next_state[0])
+            new_reward = reward
         self._episode_total_reward += new_reward
-        self._episode_max_reward = new_reward if new_reward > self._episode_max_reward else self._episode_max_reward
+        self._episode_max_reward = max(self._episode_max_reward, new_reward)
         # print_data(self._action_map[action],action_was_random, new_reward, self.+total_reward, agent.epsilon)
         next_state = self._agent.reshape_input(next_state)
         self._agent.save_to_memory_buffer(self._state, action, reward, next_state, self._done)
@@ -107,6 +108,8 @@ class HandControl(MountainCar):
 solution = MountainCar()
 # solution = HandControl()
 
+start_time = time.time()
+
 for i in range(solution.get_episode_count()):
     episode_number = i + 1
     solution.intialise_episode(episode_number)
@@ -115,7 +118,10 @@ for i in range(solution.get_episode_count()):
 
     solution.train_model()
     
-    if solution.current_episode_successful():
+    if solution.current_episode_successful() or episode_number % 50 == 0:
         solution.replay_episode()
+    done_time = time.time()
+    print("Episode {} Completed in {}s".format(episode_number, done_time-start_time))
+    start_time = done_time
 
 solution.close()
