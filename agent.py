@@ -58,7 +58,7 @@ class Agent:
                     
                 future_rewards[i][action] = target_q
 
-            self.model.fit(states, future_rewards, epochs=1, verbose=0)
+            self.model.fit(states, future_rewards, batch_size=self.training_batch_size, verbose=0)
 
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
