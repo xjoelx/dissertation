@@ -1,8 +1,7 @@
-import random
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras as keras
-from keras import layers
+import random
 from collections import deque
 
 class Agent:
@@ -11,7 +10,7 @@ class Agent:
         self.learning_rate = 0.001
 
         self.epsilon = 0.95
-        self.epsilon_decay = 0.95
+        self.epsilon_decay = 0.995
         self.epsilon_min = 0.01
         self.training_batch_size = 32
 
@@ -26,34 +25,48 @@ class Agent:
         self.memory_buffer.append((state, action, reward, next_state, done))
 
     def get_action(self, state):
-        if random.uniform(0, 1) < self.epsilon:
-            return (random.randrange(self.action_space_size), True)
+        if np.random.rand(0, 1) < self.epsilon:
+            return (np.random.randint(self.action_space_size), True)
         else:
             action_values = self.model.predict(np.reshape(state, [1, self.state_space_size]))
             return (np.argmax(action_values), False)
 
     def train_model(self):
         if len(self.memory_buffer) > self.training_batch_size:
-            training_sample = random.sample(self.memory_buffer, self.training_batch_size)
+            training_sample =  random.sample(self.memory_buffer, self.training_batch_size)
 
-            for state, action, reward, next_state, done in training_sample:
+            states = []
+            next_states = []
+
+            for sample in training_sample:
+                state, _, _, next_state, _ = sample
+                states.append(state)
+                next_states.append(next_state)
+
+            states = np.array(states).reshape(self.training_batch_size, 2)
+            next_states =  np.array(next_states).reshape(self.training_batch_size, 2)  
+
+            future_rewards = self.model.predict(states)
+            next_state_targets = self.model.predict(next_states)
+
+            for i, sample in enumerate(training_sample):
+                _, action, reward, _, done = sample
                 if done:
                     target_q = reward
                 else:
-                    target_q = (reward + self.gamma * np.amax(self.model.predict(next_state)[0]))
-                
-                future_rewards = self.model.predict(state)
-                future_rewards[0][action] = target_q
+                    target_q = (reward + self.gamma * max(next_state_targets[i]))
+                    
+                future_rewards[i][action] = target_q
 
-                self.model.fit(state, future_rewards, epochs=1, verbose=0)
+            self.model.fit(states, future_rewards, epochs=1, verbose=0)
 
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
 
     def __build_model(self):
         model = keras.models.Sequential()
-        model.add(layers.Dense(32, input_dim=self.state_space_size, activation="relu"))
-        model.add(layers.Dense(self.action_space_size, activation='linear'))
+        model.add(keras.layers.Dense(32, input_dim=self.state_space_size, activation="relu"))
+        model.add(keras.layers.Dense(self.action_space_size, activation='linear'))
         model.compile(loss='mse', optimizer=keras.optimizers.Adam(learning_rate=self.learning_rate))
         return model
 
