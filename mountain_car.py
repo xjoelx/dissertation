@@ -12,7 +12,7 @@ class MountainCar:
     def __init__(self):
         self._output_directory = "data/{}".format(datetime.now().strftime("%d%m%H%M%S"))
         os.mkdir(self._output_directory)
-        self._env = MountainCarEnv()
+        self._env = gym.make('MountainCar-v0')
         # gym.logger.set_level(gym.logger.DEBUG)
         self._agent = Agent(self._env)
         self._n_episodes = 1000
@@ -32,14 +32,13 @@ class MountainCar:
         print('Total Reward: {}'.format(self._episode_total_reward))
 
     def run_tick(self):
-        self._env.render()
+        # self._env.render()
         action, action_was_random = self._agent.get_action(self._state)
         self._current_episode_actions.append(action)
-        next_state, reward, _ , _ = self._env.step(action)  
+        next_state, reward, self._done , _ = self._env.step(action)  
         if next_state[0] >= self._target_position:
             new_reward = 200
             self._successful = True
-            self._done = True
         else:
             new_reward = reward
         self._episode_total_reward += new_reward
