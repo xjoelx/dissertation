@@ -6,16 +6,18 @@ import io
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 from datetime import datetime
 from agent import Agent, ExampleAgent
+from mountain_car_environment import MountainCarEnv
 import keyboard
 from csv_writer import CsvWriter
 import time
 import cProfile
 class MountainCar:
     def __init__(self):
-        self._output_directory = "data/{}".format(datetime.now().strftime("%d%m%H%M%S"))
+        self._output_directory = "data/{}".format(datetime.now().strftime("%m%d%H%M%S"))
         os.mkdir(self._output_directory)
-        self._env = gym.make('MountainCar-v0')
-        # gym.logger.set_level(gym.logger.DEBUG)
+        self._env = MountainCarEnv()
+        # self._env = gym.make('MountainCar-v0')
+        gym.logger.set_level(gym.logger.DEBUG)
         self._agent = Agent(self._env)
         self._n_episodes = 1000
         self._current_episode_number = -1
@@ -134,7 +136,6 @@ def export_profiling_results(profiler, file_name):
 solution = MountainCar()
 start_time = time.time()
 profiler = cProfile.Profile()
-gym.logger.set_level(gym.logger.DEBUG)
 
 for i in range(solution.get_episode_count()):
     episode_number = i + 1
@@ -147,7 +148,7 @@ for i in range(solution.get_episode_count()):
     
     export_profiling_results(profiler, '{}/episode{}.csv'.format(solution._output_directory, episode_number))
 
-    if solution.current_episode_successful() or episode_number % 50 == 0:
+    if solution.current_episode_successful() or episode_number % 100 == 0:
         solution.replay_episode()
     done_time = time.time()
     print("Episode {} Completed in {}s".format(episode_number, done_time-start_time))
