@@ -5,20 +5,19 @@ import random
 from collections import deque
 
 class Agent:
-    def __init__(self, environment):
-        self.gamma = 0.99
-        self.learning_rate = 0.001
-
-        self.epsilon = 1
-        self.epsilon_decay = 0.995
-        self.epsilon_min = 0.01
+    def __init__(self, environment, output_directory):
+        self.GAMMA = 0.99
+        self.LEARNING_RATE = 0.001
+        self.EPSILON_DECAY = 0.995
+        self.EPSILON_MIN = 0.01
+        self.EXPLORATION_EPISODES = 100
+        self.TRAINING_BATCH_SIZE = 32
+        self.STATE_SPACE_SIZE = environment.observation_space.shape[0]
+        self.ACTION_SPACE_SIZE = environment.action_space.n
+        self.EPISODE_LENGTH = environment.episode_length
+    
         self.current_episode = 0
-        self.exploration_episodes = 100
-        self.training_batch_size = 32
-
-        self.state_space_size = environment.observation_space.shape[0]
-        self.action_space_size = environment.action_space.n
-        self.episode_length = environment.episode_length
+        self.epsilon = 1
 
         self.memory_buffer = deque(maxlen=50000)
 
@@ -29,14 +28,14 @@ class Agent:
 
     def get_action(self, state):
         if random.uniform(0, 1) < self.epsilon:
-            return (random.randrange(self.action_space_size), True)
+            return (random.randrange(self.ACTION_SPACE_SIZE), True)
         else:
-            action_values = self.model.predict(np.reshape(state, [1, self.state_space_size]))
+            action_values = self.model.predict(np.reshape(state, [1, self.STATE_SPACE_SIZE]))
             return (np.argmax(action_values), False)
 
     def train_model(self):
-        if self.current_episode >= self.exploration_episodes:
-            training_sample =  random.sample(self.memory_buffer, self.training_batch_size)
+        if self.current_episode >= self.EXPLORATION_EPISODES:
+            training_sample =  random.sample(self.memory_buffer, self.TRAINING_BATCH_SIZE)
 
             states = []
             next_states = []
@@ -46,8 +45,8 @@ class Agent:
                 states.append(state)
                 next_states.append(next_state)
 
-            states = np.array(states).reshape(self.training_batch_size, 2)
-            next_states =  np.array(next_states).reshape(self.training_batch_size, 2)  
+            states = np.array(states).reshape(self.TRAINING_BATCH_SIZE, 2)
+            next_states =  np.array(next_states).reshape(self.TRAINING_BATCH_SIZE, 2)  
 
             future_rewards = self.model.predict(states)
             next_state_targets = self.model.predict(next_states)
@@ -57,36 +56,41 @@ class Agent:
                 if done:
                     target_q = reward
                 else:
-                    target_q = (reward + self.gamma * max(next_state_targets[i]))
+                    target_q = (reward + self.GAMMA * max(next_state_targets[i]))
                     
                 future_rewards[i][action] = target_q
 
-            self.model.fit(states, future_rewards, batch_size=self.training_batch_size, verbose=0)
+            self.model.fit(states, future_rewards, batch_size=self.TRAINING_BATCH_SIZE, verbose=0)
 
-            if self.epsilon > self.epsilon_min:
-                self.epsilon *= self.epsilon_decay
+            if self.epsilon > self.EPSILON_MIN:
+                self.epsilon *= self.EPSILON_DECAY
 
     def __build_model(self):
         model = keras.models.Sequential()
-        model.add(keras.layers.Dense(32, input_dim=self.state_space_size, activation="relu"))
-        model.add(keras.layers.Dense(self.action_space_size, activation='linear'))
-        model.compile(loss='mse', optimizer=keras.optimizers.Adam(learning_rate=self.learning_rate))
+        model.add(keras.layers.Dense(32, input_dim=self.STATE_SPACE_SIZE, activation="relu"))
+        model.add(keras.layers.Dense(self.ACTION_SPACE_SIZE, activation='linear'))
+        model.compile(loss='mse', optimizer=keras.optimizers.Adam(learning_rate=self.LEARNING_RATE))
         return model
 
+    def _get_callback(self):
+        return tf.keras.callbacks.ModelCheckpoint(filepath=self.WEIGHTS_OUTPUT,
+                                                    save_weights_only=True,
+                                                    verbose=1)
+
     def get_state_count(self):
-        return self.state_space_size
+        return self.STATE_SPACE_SIZE
 
     def get_action_count(self):
-        return self.action_space_size
+        return self.ACTION_SPACE_SIZE
 
     def load(self, name):
         self.model.load_weights(name)
 
-    def save(self, name):
-        self.model.save_weights(name)
+    def save(self, output_directory):
+        self.model.save(output_directory)
 
     def reshape_input(self, input):
-        return np.reshape(input, [1, self.state_space_size])
+        return np.reshape(input, [1, self.STATE_SPACE_SIZE])
 
 class ExampleAgent(Agent):
     def __init__(self, environment, batch_size=32, memory_size=50000):

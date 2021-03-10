@@ -2,6 +2,7 @@ import cProfile, pstats
 import gym
 import pyglet
 import os
+import tensorflow as tf
 import io
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 from datetime import datetime
@@ -19,15 +20,15 @@ class MountainCar:
         # self._env = gym.make('MountainCar-v0')
         gym.logger.set_level(gym.logger.DEBUG)
         self.number_of_episodes = 1000
-        self._agent = Agent(self._env)
-        self._recording_freq = 100
+        self._agent = Agent(self._env, self._output_directory)
+        self._recording_freq = 50
         self._current_episode_number = 0
         self._target_position = 0.5
         self._episode_max_reward = -1000000
         self._episode_total_reward = 0
         self._action_map = ['Left', 'Nothing', 'Right']
-        self._writer = CsvWriter("{}/data.csv".format(self._output_directory), self.get_csv_headers())
-        
+        self._epoch_writer = CsvWriter("{}/epoch-data.csv".format(self._output_directory), CsvWriter.EPOCH_HEADERS)
+        self.WEIGHTS_OUTPUT = "{}/weights.hdf5".format(self._output_directory)
 
     def _print_data(self, action, exploring, current_reward):
         os.system('cls')
@@ -36,35 +37,45 @@ class MountainCar:
         print('Total Reward: {}'.format(self._episode_total_reward))
 
     def run_tick(self):
-    
-        if self._to_record:
-            self._env.render()
-            self._video_recorder.capture_frame()
         action, action_was_random = self._agent.get_action(self._state)
         self._current_episode_actions.append(action)
         next_state, reward, self._done , _ = self._env.step(action)  
 
         self._episode_total_reward += reward
         self._episode_max_reward = max(self._episode_max_reward, reward)
-        # self._print_data(self._action_map[action],action_was_random, reward)
+
+        tick_data = [*self._state[0], self._action_map[action], action_was_random, reward]
+
+        self._episode_data.append(tick_data)
+
+        if self._to_record:
+            self._env.render()
+            self._print_data(self._action_map[action],action_was_random, reward)
+            self._video_recorder.capture_frame()
+        
         next_state = self._agent.reshape_input(next_state)
         self._agent.save_to_memory_buffer(self._state, action, reward, next_state, self._done)
         self._state = next_state
 
         if self._done:
-            self._writer.write_data(self.get_data_to_write())
+            meta_data = self.get_episode_data()
+            self._epoch_writer.write_vector(meta_data)
+            print("E{}: MR - {}, TR - {}, E - {}".format(*meta_data))
+
+            episode_writer = CsvWriter("{}/e{}.csv".format(self._output_directory, self._current_episode_number), CsvWriter.EPISODE_HEADERS)
+            episode_writer.write_matrix(self._episode_data)
+
             if self._to_record:
                 self._video_recorder.close()  
 
-    def get_csv_headers(self):
-        return ["Episode Number", "Maximum Reward", "Total Reward", "Exploring Rate"]
+    def get_episode_data(self):
+        return [self._current_episode_number,  round(self._episode_max_reward, 5),
+                round(self._episode_total_reward,5), round(self._agent.epsilon, 5)]
 
-    def get_data_to_write(self):
-        return [self._current_episode_number,  self._episode_max_reward,
-                self._episode_total_reward, self._agent.epsilon]
 
     def close(self):
         self._env.close()
+        self._agent.save(self.WEIGHTS_OUTPUT)
 
     def train_model(self):
         self._agent.train_model()
@@ -81,7 +92,7 @@ class MountainCar:
         self._current_episode_actions = []
         self._to_record = self._current_episode_number % self._recording_freq == 0
         self._video_recorder = VideoRecorder(self._env, "{}/episode{}.mp4".format(self._output_directory, self._current_episode_number), enabled=self._to_record)
-
+        self._episode_data = []
 
     def current_episode_done(self):
         return self._done
@@ -121,27 +132,30 @@ def export_profiling_results(profiler, file_name):
         f.write(result)
         f.close()
 
+import tensorflow as tf
+tf.config.experimental.set_memory_growth(tf.config.list_physical_devices('GPU')[0], True)
 
+
+first_episode = 1
 solution = MountainCar()
 start_time = time.time()
-done = False
 
-while not done:
-    try:
-        profiler = cProfile.Profile()
-        episode_number = i + 1
-        solution.intialise_episode(episode_number)
-        profiler.enable()
-        while not solution.current_episode_done():
-            solution.run_tick()
-        solution.train_model()
-        profiler.disable()
-        
-        export_profiling_results(profiler, '{}/episode{}.csv'.format(solution._output_directory, episode_number))
-        
-        done_time = time.time()
-        print("Episode {} Completed in {}s".format(episode_number, done_time-start_time))
-        start_time = done_time
-    except KeyboardInterrupt:
-        done = True
-        solution.close()
+try:
+    while True:
+        for i in range(solution.number_of_episodes):
+                profiler = cProfile.Profile()
+                episode_number = i + first_episode
+                solution.intialise_episode(episode_number)
+                profiler.enable()
+                while not solution.current_episode_done():
+                    solution.run_tick()
+                solution.train_model()
+                profiler.disable()
+                
+                export_profiling_results(profiler, '{}/e{}-profiling.csv'.format(solution._output_directory, episode_number))
+                
+                done_time = time.time()
+                # print("Episode {} Completed in {}s".format(episode_number, done_time-start_time))
+                start_time = done_time
+except KeyboardInterrupt:
+    solution.close()
