@@ -135,9 +135,9 @@ def export_profiling_results(profiler, file_name):
 
 solution = MountainCar()
 start_time = time.time()
-profiler = cProfile.Profile()
 
 for i in range(solution.get_episode_count()):
+    profiler = cProfile.Profile()
     episode_number = i + 1
     solution.intialise_episode(episode_number)
     profiler.enable()
