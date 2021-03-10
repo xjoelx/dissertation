@@ -1,8 +1,9 @@
 # My stuff
 .vscode
 Assignment3
-data
 CARLA
+data/*
+!data/.gitkeep
 
 
 # Byte-compiled / optimized / DLL files
