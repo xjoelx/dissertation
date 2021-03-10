@@ -12,11 +12,13 @@ class Agent:
         self.epsilon = 1
         self.epsilon_decay = 0.995
         self.epsilon_min = 0.01
-        self.exploration_ticks = 10000
+        self.current_episode = 0
+        self.exploration_episodes = 100
         self.training_batch_size = 32
 
         self.state_space_size = environment.observation_space.shape[0]
         self.action_space_size = environment.action_space.n
+        self.episode_length = environment.episode_length
 
         self.memory_buffer = deque(maxlen=50000)
 
@@ -33,7 +35,7 @@ class Agent:
             return (np.argmax(action_values), False)
 
     def train_model(self):
-        if len(self.memory_buffer) > self.exploration_ticks:
+        if self.current_episode >= self.exploration_episodes:
             training_sample =  random.sample(self.memory_buffer, self.training_batch_size)
 
             states = []

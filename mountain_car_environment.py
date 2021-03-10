@@ -63,6 +63,8 @@ class MountainCarEnv(gym.Env):
         self.max_speed = 0.07
         self.goal_position = 0.5
         self.goal_velocity = goal_velocity
+        self.tick_count = 0
+        self.episode_length = 500
 
         self.force = 0.001
         self.gravity = 0.0025
@@ -90,6 +92,7 @@ class MountainCarEnv(gym.Env):
     def step(self, action):
         assert self.action_space.contains(action), "%r (%s) invalid" % (action, type(action))
 
+        self.tick_count += 1
         position, velocity = self.state
         velocity += (action - 1) * self.force + math.cos(3 * position) * (-self.gravity)
         velocity = np.clip(velocity, -self.max_speed, self.max_speed)
@@ -98,16 +101,34 @@ class MountainCarEnv(gym.Env):
         if (position == self.min_position and velocity < 0):
             velocity = 0
 
-        done = bool(
-            position >= self.goal_position and velocity >= self.goal_velocity
-        )
-        reward = -1.0
+        done = (position >= self.goal_position and velocity >= self.goal_velocity) or self.tick_count > self.episode_length
+        reward = self.get_reward_alt(self.state, position, velocity)
 
         self.state = (position, velocity)
         return np.array(self.state), reward, done, {}
 
+    def get_reward(self, state, position, velocity):
+        reward = 0
+
+        if velocity > self.state[1] >= 0 and velocity >= 0:
+            reward = 20
+
+        if velocity < self.state[1] <= 0 and velocity <= 0:
+            reward = 20
+
+        if position >= self.goal_position:
+            reward += 100_000
+        else:
+            reward += -25
+
+        return reward
+
+    def get_reward_alt(self, state, position, velocity):\
+        return 100*((math.sin(3*position) * 0.0025 + 0.5 * velocity * velocity) - (math.sin(3*state[0]) * 0.0025 + 0.5 * state[1] * state[1])) 
+
     def reset(self):
         self.state = np.array([self.np_random.uniform(low=-0.6, high=-0.4), 0])
+        self.tick_count = 0
         return np.array(self.state)
 
     def _height(self, xs):
@@ -164,14 +185,14 @@ class MountainCarEnv(gym.Env):
                 [(flagx, flagy2), (flagx, flagy2 - 10), (flagx + 25, flagy2 - 5)]
             )
             flag.set_color(.8, .8, 0)
-            self.viewer.add_geom(flag)
+            self.viewer.add_geom(flag)    
 
         pos = self.state[0]
         self.cartrans.set_translation(
             (pos-self.min_position) * scale, self._height(pos) * scale
         )
         self.cartrans.set_rotation(math.cos(3 * pos))
-
+ 
         return self.viewer.render(return_rgb_array=mode == 'rgb_array')
 
     def get_keys_to_action(self):
