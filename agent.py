@@ -12,12 +12,13 @@ class Agent:
         self.epsilon = 1
         self.epsilon_decay = 0.995
         self.epsilon_min = 0.01
+        self.exploration_ticks = 10000
         self.training_batch_size = 32
 
         self.state_space_size = environment.observation_space.shape[0]
         self.action_space_size = environment.action_space.n
 
-        self.memory_buffer = deque(maxlen=2000)
+        self.memory_buffer = deque(maxlen=50000)
 
         self.model = self.__build_model()
 
@@ -32,7 +33,7 @@ class Agent:
             return (np.argmax(action_values), False)
 
     def train_model(self):
-        if len(self.memory_buffer) > self.training_batch_size:
+        if len(self.memory_buffer) > self.exploration_ticks:
             training_sample =  random.sample(self.memory_buffer, self.training_batch_size)
 
             states = []
@@ -60,8 +61,8 @@ class Agent:
 
             self.model.fit(states, future_rewards, batch_size=self.training_batch_size, verbose=0)
 
-        if self.epsilon > self.epsilon_min:
-            self.epsilon *= self.epsilon_decay
+            if self.epsilon > self.epsilon_min:
+                self.epsilon *= self.epsilon_decay
 
     def __build_model(self):
         model = keras.models.Sequential()
