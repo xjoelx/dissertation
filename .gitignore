@@ -4,7 +4,7 @@ Assignment3
 CARLA
 data/*
 !data/.gitkeep
-!data/0310164506/weights.hdf5
+!data/*.hdf5
 *.txt
 recording
 
