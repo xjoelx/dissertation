@@ -64,7 +64,7 @@ class MountainCarEnv(gym.Env):
         self.goal_position = 0.5
         self.goal_velocity = goal_velocity
         self.tick_count = 0
-        self.episode_length = 500
+        self.episode_length = 200
 
         self.force = 0.001
         self.gravity = 0.0025
@@ -102,7 +102,7 @@ class MountainCarEnv(gym.Env):
             velocity = 0
 
         done = (position >= self.goal_position and velocity >= self.goal_velocity) or self.tick_count > self.episode_length
-        reward = self.get_reward_alt(self.state, position, velocity)
+        reward = self.get_reward(self.state, position, velocity)
 
         self.state = (position, velocity)
         return np.array(self.state), reward, done, {}
@@ -123,11 +123,11 @@ class MountainCarEnv(gym.Env):
 
         return reward
 
-    def get_reward_alt(self, state, position, velocity):\
-        return 100*((math.sin(3*position) * 0.0025 + 0.5 * velocity * velocity) - (math.sin(3*state[0]) * 0.0025 + 0.5 * state[1] * state[1])) 
+    def get_reward_alt(self, state, position, velocity):
+        return 100 if position >= self.goal_position else 100*((math.sin(3*position) * 0.0025 + 0.5 * velocity * velocity) - (math.sin(3*state[0]) * 0.0025 + 0.5 * state[1] * state[1])) 
 
     def reset(self):
-        self.state = np.array([self.np_random.uniform(low=-0.6, high=-0.4), 0])
+        self.state = np.array([-0.8, 0])
         self.tick_count = 0
         return np.array(self.state)
 

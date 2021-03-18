@@ -5,33 +5,37 @@ import random
 from collections import deque
 
 class Agent:
-    def __init__(self, environment, output_directory):
+    def __init__(self, environment):
+        self.UPDATE_TRAGET_EVERY = 10
         self.GAMMA = 0.99
         self.LEARNING_RATE = 0.001
         self.EPSILON_DECAY = 0.995
         self.EPSILON_MIN = 0.01
-        self.EXPLORATION_EPISODES = 100
-        self.TRAINING_BATCH_SIZE = 32
+        self.EXPLORATION_EPISODES = 50
+        self.TRAINING_BATCH_SIZE = 500
         self.STATE_SPACE_SIZE = environment.observation_space.shape[0]
         self.ACTION_SPACE_SIZE = environment.action_space.n
         self.EPISODE_LENGTH = environment.episode_length
     
         self.current_episode = 0
+        self.current_update_count = 0
         self.epsilon = 1
 
         self.memory_buffer = deque(maxlen=50000)
 
         self.model = self.__build_model()
+        self.target_model = self.__build_model()
+        self.target_model.set_weights(self.model.get_weights())
 
     def save_to_memory_buffer(self, state, action, reward, next_state, done):
         self.memory_buffer.append((state, action, reward, next_state, done))
 
     def get_action(self, state):
         if random.uniform(0, 1) < self.epsilon:
-            return (random.randrange(self.ACTION_SPACE_SIZE), True)
+            return (random.randrange(self.ACTION_SPACE_SIZE), True, [-1, -2, -3])
         else:
             action_values = self.model.predict(np.reshape(state, [1, self.STATE_SPACE_SIZE]))
-            return (np.argmax(action_values), False)
+            return (np.argmax(action_values), False, action_values)
 
     def train_model(self):
         if self.current_episode >= self.EXPLORATION_EPISODES:
@@ -49,7 +53,7 @@ class Agent:
             next_states =  np.array(next_states).reshape(self.TRAINING_BATCH_SIZE, 2)  
 
             future_rewards = self.model.predict(states)
-            next_state_targets = self.model.predict(next_states)
+            next_state_targets = self.target_model.predict(next_states)
 
             for i, sample in enumerate(training_sample):
                 _, action, reward, _, done = sample
@@ -60,14 +64,18 @@ class Agent:
                     
                 future_rewards[i][action] = target_q
 
-            self.model.fit(states, future_rewards, batch_size=self.TRAINING_BATCH_SIZE, verbose=0)
+            self.model.fit(states, future_rewards, batch_size=self.TRAINING_BATCH_SIZE, verbose=0, epochs=50)
 
-            if self.epsilon > self.EPSILON_MIN:
-                self.epsilon *= self.EPSILON_DECAY
+            self.epsilon = max(self.epsilon * self.EPSILON_DECAY, self.EPSILON_MIN)
+            self.current_update_count += 1
+            if self.current_update_count >= self.UPDATE_TRAGET_EVERY:
+                self.current_update_count = 0
+                self.target_model.set_weights(self.model.get_weights())
 
     def __build_model(self):
         model = keras.models.Sequential()
-        model.add(keras.layers.Dense(32, input_dim=self.STATE_SPACE_SIZE, activation="relu"))
+        model.add(keras.layers.Dense(24, input_dim=self.STATE_SPACE_SIZE, activation="relu"))
+        model.add(keras.layers.Dense(24, activation="relu"))
         model.add(keras.layers.Dense(self.ACTION_SPACE_SIZE, activation='linear'))
         model.compile(loss='mse', optimizer=keras.optimizers.Adam(learning_rate=self.LEARNING_RATE))
         return model
@@ -93,49 +101,51 @@ class Agent:
         return np.reshape(input, [1, self.STATE_SPACE_SIZE])
 
 class ExampleAgent(Agent):
-    def __init__(self, environment, batch_size=32, memory_size=50000):
-        self.state_space_size = environment.observation_space.shape[0]
-        self.action_space_size = environment.action_space.n
-        self.batch_size = batch_size
-        self.memory = deque(maxlen=memory_size)
-        self.training = 10000  # training after 10000 env steps
-        self.gamma = 0.95  # discount rate
+    def __init__(self, environment):
+        self.STATE_SPACE_SIZE = environment.observation_space.shape[0]
+        self.ACTION_SPACE_SIZE = environment.action_space.n
+        self.TRAINING_BATCH_SIZE = 1000
+        self.EXPLORATION_TICKS = 50 * environment.episode_length
+        self.GAMMA = 0.95  # discount rate
         self.epsilon = 1.0  # exploration rate
-        self.epsilon_min = 0.01
-        self.epsilon_decay = 0.995
-        self.learning_rate = 0.001
+        self.EPSILON_MIN = 0.01
+        self.EPSILON_DECAY = 0.995
+        self.LEARNING_RATE = 0.001
+        
         self.model = self._build_model()
+        self.memory_buffer = deque(maxlen=50_000)
 
     def _build_model(self):
         model = keras.models.Sequential()
-        model.add(keras.layers.Dense(24, input_dim=self.state_space_size, activation='relu'))
+        model.add(keras.layers.Dense(24, input_dim=self.STATE_SPACE_SIZE, activation='relu'))
         model.add(keras.layers.Dense(24, activation='relu'))
-        model.add(keras.layers.Dense(self.action_space_size, activation='linear'))
-        model.compile(loss='mse', optimizer=keras.optimizers.Adam(lr=self.learning_rate))
+        model.add(keras.layers.Dense(self.ACTION_SPACE_SIZE, activation='linear'))
+        model.compile(loss='mse', optimizer=keras.optimizers.Adam(lr=self.LEARNING_RATE))
         return model
 
     def save_to_memory_buffer(self, state, action, reward, next_state, done):
-        self.memory.append((state, action, reward, next_state, done))
+        self.memory_buffer.append((state, action, reward, next_state, done))
 
     def get_action(self, state):
         if random.uniform(0, 1) < self.epsilon:
-            return (random.randrange(self.action_space_size), True)
+            return (random.randrange(self.ACTION_SPACE_SIZE), True, [-99, -99, -99])
         else:
-            return (np.argmax(self.model.predict(state)[0]), False)
+            predictions = self.model.predict(state)[0]
+            return (np.argmax(predictions), False, predictions)
 
     def train_model(self):
         # Updates the online network weights after enough data is collected
-        if self.training >= len(self.memory):
+        if self.EXPLORATION_TICKS >= len(self.memory_buffer):
             return
 
         # Samples a batch from the memory
-        random_batch = random.sample(self.memory, self.batch_size)
+        random_batch = random.sample(self.memory_buffer, self.TRAINING_BATCH_SIZE)
 
-        state = np.zeros((self.batch_size, self.state_space_size))
-        next_state = np.zeros((self.batch_size, self.state_space_size))
+        state = np.zeros((self.TRAINING_BATCH_SIZE, self.STATE_SPACE_SIZE))
+        next_state = np.zeros((self.TRAINING_BATCH_SIZE, self.STATE_SPACE_SIZE))
         action, reward, done = [], [], []
 
-        for i in range(self.batch_size):
+        for i in range(self.TRAINING_BATCH_SIZE):
             state[i] = random_batch[i][0]
             action.append(random_batch[i][1])
             reward.append(random_batch[i][2])
@@ -150,13 +160,13 @@ class ExampleAgent(Agent):
             if done[i]:
                 target[i][action[i]] = reward[i]
             else:
-                target[i][action[i]] = reward[i] + self.gamma * (np.amax(target_next[i]))
+                target[i][action[i]] = reward[i] + self.GAMMA * (np.amax(target_next[i]))
 
         self.model.fit(
             np.array(state),
             np.array(target),
-            batch_size=self.batch_size,
+            batch_size=self.TRAINING_BATCH_SIZE,
             verbose=0
         )
 
-        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
+        self.epsilon = max(self.EPSILON_MIN, self.epsilon * self.EPSILON_DECAY)

@@ -3,6 +3,7 @@ import gym
 import pyglet
 import os
 import tensorflow as tf
+import numpy as np
 import io
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 from datetime import datetime
@@ -20,7 +21,7 @@ class MountainCar:
         # self._env = gym.make('MountainCar-v0')
         gym.logger.set_level(gym.logger.DEBUG)
         self.number_of_episodes = 1000
-        self._agent = Agent(self._env, self._output_directory)
+        self._agent = Agent(self._env)
         self._recording_freq = 50
         self._current_episode_number = 0
         self._target_position = 0.5
@@ -37,14 +38,14 @@ class MountainCar:
         print('Total Reward: {}'.format(self._episode_total_reward))
 
     def run_tick(self):
-        action, action_was_random = self._agent.get_action(self._state)
+        action, action_was_random, action_predictions = self._agent.get_action(self._state)
         self._current_episode_actions.append(action)
         next_state, reward, self._done , _ = self._env.step(action)  
 
         self._episode_total_reward += reward
         self._episode_max_reward = max(self._episode_max_reward, reward)
 
-        tick_data = [*self._state[0], self._action_map[action], action_was_random, reward]
+        tick_data = [*self._state[0], self._action_map[action], action_was_random, reward, *action_predictions]
 
         self._episode_data.append(tick_data)
 
@@ -55,6 +56,7 @@ class MountainCar:
         
         next_state = self._agent.reshape_input(next_state)
         self._agent.save_to_memory_buffer(self._state, action, reward, next_state, self._done)
+     
         self._state = next_state
 
         if self._done:
@@ -90,7 +92,8 @@ class MountainCar:
         self._state = self._inital_state
         self._successful = False
         self._current_episode_actions = []
-        self._to_record = self._current_episode_number % self._recording_freq == 0
+        # self._to_record = self._current_episode_number % self._recording_freq == 0
+        self._to_record = False
         self._video_recorder = VideoRecorder(self._env, "{}/episode{}.mp4".format(self._output_directory, self._current_episode_number), enabled=self._to_record)
         self._episode_data = []
 
@@ -101,6 +104,11 @@ class MountainCar:
         return self._successful
 
 class HandControl(MountainCar):
+    def __init__(self):
+        super().__init__()
+        import keras
+        self.model = keras.models.load_model("data/0318135057/weights.hdf5")
+
     def run_tick(self):
         self._env.render()
         if keyboard.is_pressed("a"):
@@ -114,7 +122,16 @@ class HandControl(MountainCar):
         if state[0] >= self._target_position:
             self._successful = True
               
-        self._print_data(self._action_map[action],"", reward)
+        self._print_data(self._action_map[action],"", reward, state.reshape(1,2))
+
+    def _print_data(self, action, exploring, current_reward, state):
+        os.system('cls')
+        # print('Action Taken: {}, {}'.format(action, 'Exploring' if exploring else 'Exploiting'))
+        # print('Current Reward: {}'.format(current_reward))
+        # print('Total Reward: {}'.format(self._episode_total_reward))
+        result = self.model.predict(state)
+        print(state[0])
+        print('Prediction : {}'.format(self._action_map[np.argmax(result)]))
     
 
 # https://qxf2.com/blog/saving-cprofile-stats-to-a-csv-file/
@@ -137,7 +154,7 @@ tf.config.experimental.set_memory_growth(tf.config.list_physical_devices('GPU')[
 
 
 first_episode = 1
-solution = MountainCar()
+solution = HandControl()
 start_time = time.time()
 
 try:

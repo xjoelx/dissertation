@@ -5,6 +5,7 @@ CARLA
 data/*
 !data/.gitkeep
 *.txt
+recording
 
 
 # Byte-compiled / optimized / DLL files
