@@ -13,23 +13,20 @@ import keyboard
 from csv_writer import CsvWriter
 import time
 import cProfile
+
 class MountainCar:
     def __init__(self):
         self._output_directory = "data/{}".format(datetime.now().strftime("%m%d%H%M%S"))
         os.mkdir(self._output_directory)
         self._env = MountainCarEnv()
-        # self._env = gym.make('MountainCar-v0')
-        gym.logger.set_level(gym.logger.DEBUG)
-        self.number_of_episodes = 1000
+        # gym.logger.set_level(gym.logger.DEBUG)
+        self.NUUMBER_OF_EPISODES = 100_000
         self._agent = Agent(self._env)
-        self._recording_freq = 50
-        self._current_episode_number = 0
-        self._target_position = 0.5
-        self._episode_max_reward = -1000000
-        self._episode_total_reward = 0
-        self._action_map = ['Left', 'Nothing', 'Right']
+        self.RECORDING_FREQ = 50
+        self.TARGET_POSITION = 0.5
+        self.ACTION_MAP = ['Left', 'Nothing', 'Right']
         self._epoch_writer = CsvWriter("{}/epoch-data.csv".format(self._output_directory), CsvWriter.EPOCH_HEADERS)
-        self.WEIGHTS_OUTPUT = "{}/weights.hdf5".format(self._output_directory)
+        self.AGENT_NAME = "DDQNOriginalRewards"
 
     def _print_data(self, action, exploring, current_reward):
         os.system('cls')
@@ -44,25 +41,27 @@ class MountainCar:
 
         self._episode_total_reward += reward
         self._episode_max_reward = max(self._episode_max_reward, reward)
+        self._episode_max_height = max(self._episode_max_height, next_state[0])
 
-        tick_data = [*self._state[0], self._action_map[action], action_was_random, reward, *action_predictions]
+        tick_data = [*self._state[0], self.ACTION_MAP[action], action_was_random, reward, *action_predictions]
 
         self._episode_data.append(tick_data)
 
         if self._to_record:
             self._env.render()
-            self._print_data(self._action_map[action],action_was_random, reward)
+            self._print_data(self.ACTION_MAP[action],action_was_random, reward)
             self._video_recorder.capture_frame()
         
         next_state = self._agent.reshape_input(next_state)
         self._agent.save_to_memory_buffer(self._state, action, reward, next_state, self._done)
+        self._agent.train_model()
      
         self._state = next_state
 
         if self._done:
             meta_data = self.get_episode_data()
             self._epoch_writer.write_vector(meta_data)
-            print("E{}: MR - {}, TR - {}, E - {}".format(*meta_data))
+            print("E{}: MR - {}, MH - {}, TR - {}, E - {}".format(*meta_data))
 
             episode_writer = CsvWriter("{}/e{}.csv".format(self._output_directory, self._current_episode_number), CsvWriter.EPISODE_HEADERS)
             episode_writer.write_matrix(self._episode_data)
@@ -71,23 +70,25 @@ class MountainCar:
                 self._video_recorder.close()  
 
     def get_episode_data(self):
-        return [self._current_episode_number,  round(self._episode_max_reward, 5),
+        return [self._current_episode_number,  round(self._episode_max_reward, 5), self._episode_max_height,
                 round(self._episode_total_reward,5), round(self._agent.epsilon, 5)]
 
 
     def close(self):
         self._env.close()
+        self.WEIGHTS_OUTPUT = "{}/{}.hdf5".format(self._output_directory, self.AGENT_NAME)
         self._agent.save(self.WEIGHTS_OUTPUT)
 
     def train_model(self):
         self._agent.train_model()
         
     def intialise_episode(self, episode_number):
-        self._current_episode_number = episode_number
         self._done = False
         self._inital_state = self._agent.reshape_input(self._env.reset())
+        self._current_episode_number = episode_number
         self._agent.current_episode = episode_number
         self._episode_max_reward = -1000000
+        self._episode_max_height = -5
         self._episode_total_reward = 0
         self._state = self._inital_state
         self._successful = False
@@ -102,6 +103,41 @@ class MountainCar:
 
     def current_episode_successful(self):
         return self._successful
+
+class MountainCarModyfiedReward(MountainCar):
+    def __init__(self):
+        super().__init__()
+
+        def reward_function(state, position, velocity):
+            reward = 0
+            if velocity > state[1] >= 0 and velocity >= 0:
+                reward = 20
+            if velocity < state[1] <= 0 and velocity <= 0:
+                reward = 20
+            if position >= 0.5:
+                reward += 100_000
+            else:
+                reward += -25
+            return reward
+
+        self._env = MountainCarEnv(reward_function)
+        self._env.episode_length = 500
+        self.AGENT_NAME = "DDQNModyfiedRewards"
+
+class MountainCarEnergyReward(MountainCar):
+    def __init__(self):
+        super().__init__()
+
+        def reward_function(state, position, velocity):
+            import math
+            return 100 if position >= 0.5 else 100*((math.sin(3*position) * 0.0025 + 0.5 * velocity * velocity) - (math.sin(3*state[0]) * 0.0025 + 0.5 * state[1] * state[1])) 
+
+
+        self._env = MountainCarEnv(reward_function)
+        self._env.episode_length = 500
+        self.AGENT_NAME = "DDQNModyfiedRewards"
+
+
 
 class HandControl(MountainCar):
     def __init__(self):
@@ -153,23 +189,28 @@ import tensorflow as tf
 tf.config.experimental.set_memory_growth(tf.config.list_physical_devices('GPU')[0], True)
 
 
-first_episode = 1
-solution = HandControl()
+ENABLE_PROFILING = False
+SHOW_FIRST_EPISODE = False
+solution = MountainCar()
 start_time = time.time()
 
 try:
-    while True:
-        for i in range(solution.number_of_episodes):
+    FIRST_EPISODE = int(not SHOW_FIRST_EPISODE)
+    while True: 
+        for i in range(solution.NUUMBER_OF_EPISODES):
                 profiler = cProfile.Profile()
-                episode_number = i + first_episode
+                episode_number = i + FIRST_EPISODE
                 solution.intialise_episode(episode_number)
-                profiler.enable()
+
+                if ENABLE_PROFILING: profiler.enable()
+
                 while not solution.current_episode_done():
                     solution.run_tick()
-                solution.train_model()
-                profiler.disable()
                 
-                export_profiling_results(profiler, '{}/e{}-profiling.csv'.format(solution._output_directory, episode_number))
+
+                if ENABLE_PROFILING:
+                    profiler.disable()
+                    export_profiling_results(profiler, '{}/e{}-profiling.csv'.format(solution._output_directory, episode_number))
                 
                 done_time = time.time()
                 # print("Episode {} Completed in {}s".format(episode_number, done_time-start_time))

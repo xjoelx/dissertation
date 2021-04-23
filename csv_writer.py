@@ -2,7 +2,7 @@ import csv
 
 class CsvWriter:
 
-    EPOCH_HEADERS = ["Episode Number", "Maximum Reward", "Total Reward", "Exploring Rate"]
+    EPOCH_HEADERS = ["Episode Number", "Maximum Reward", "Maximum Height", "Total Reward", "Exploring Rate"]
     EPISODE_HEADERS = ["Position", "Location", "Action", "Exploring", "Reward", 'LeftQ', 'NothingQ', 'RightQ']
 
     def __init__(self, directory, headers):

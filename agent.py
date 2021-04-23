@@ -7,16 +7,15 @@ from collections import deque
 class Agent:
     def __init__(self, environment):
         self.UPDATE_TRAGET_EVERY = 10
-        self.GAMMA = 0.99
+        self.GAMMA = 1
         self.LEARNING_RATE = 0.001
-        self.EPSILON_DECAY = 0.995
+        self.EPSILON_DECAY = 0.9995
         self.EPSILON_MIN = 0.01
         self.EXPLORATION_EPISODES = 50
-        self.TRAINING_BATCH_SIZE = 500
+        self.TRAINING_BATCH_SIZE = 32
         self.STATE_SPACE_SIZE = environment.observation_space.shape[0]
         self.ACTION_SPACE_SIZE = environment.action_space.n
         self.EPISODE_LENGTH = environment.episode_length
-    
         self.current_episode = 0
         self.current_update_count = 0
         self.epsilon = 1
@@ -34,7 +33,7 @@ class Agent:
         if random.uniform(0, 1) < self.epsilon:
             return (random.randrange(self.ACTION_SPACE_SIZE), True, [-1, -2, -3])
         else:
-            action_values = self.model.predict(np.reshape(state, [1, self.STATE_SPACE_SIZE]))
+            action_values = self.model(np.reshape(state, [1, self.STATE_SPACE_SIZE]))
             return (np.argmax(action_values), False, action_values)
 
     def train_model(self):
@@ -52,8 +51,8 @@ class Agent:
             states = np.array(states).reshape(self.TRAINING_BATCH_SIZE, 2)
             next_states =  np.array(next_states).reshape(self.TRAINING_BATCH_SIZE, 2)  
 
-            future_rewards = self.model.predict(states)
-            next_state_targets = self.target_model.predict(next_states)
+            future_rewards = np.array(self.model(states))
+            next_state_targets = np.array(self.target_model(next_states))
 
             for i, sample in enumerate(training_sample):
                 _, action, reward, _, done = sample

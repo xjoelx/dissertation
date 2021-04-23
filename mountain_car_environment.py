@@ -57,14 +57,15 @@ class MountainCarEnv(gym.Env):
         'video.frames_per_second': 30
     }
 
-    def __init__(self, goal_velocity=0):
+    def __init__(self, reward_function=lambda state, position, velocity : 0 if position >= 0.5 else -1):
         self.min_position = -1.2
         self.max_position = 0.6
         self.max_speed = 0.07
+        self.reward_function = reward_function
         self.goal_position = 0.5
-        self.goal_velocity = goal_velocity
+        self.goal_velocity = 0
         self.tick_count = 0
-        self.episode_length = 200
+        self.episode_length = 100_000
 
         self.force = 0.001
         self.gravity = 0.0025
@@ -93,21 +94,21 @@ class MountainCarEnv(gym.Env):
         assert self.action_space.contains(action), "%r (%s) invalid" % (action, type(action))
 
         self.tick_count += 1
-        position, velocity = self.state
-        velocity += (action - 1) * self.force + math.cos(3 * position) * (-self.gravity)
-        velocity = np.clip(velocity, -self.max_speed, self.max_speed)
-        position += velocity
-        position = np.clip(position, self.min_position, self.max_position)
-        if (position == self.min_position and velocity < 0):
-            velocity = 0
+        new_position, new_velocity = self.state
+        new_velocity += (action - 1) * self.force + math.cos(3 * new_position) * (-self.gravity)
+        new_velocity = np.clip(new_velocity, -self.max_speed, self.max_speed)
+        new_position += new_velocity
+        new_position = np.clip(new_position, self.min_position, self.max_position)
+        if (new_position == self.min_position and new_velocity < 0):
+            new_velocity = 0
 
-        done = (position >= self.goal_position and velocity >= self.goal_velocity) or self.tick_count > self.episode_length
-        reward = self.get_reward(self.state, position, velocity)
+        done = (new_position >= self.goal_position and new_velocity >= self.goal_velocity) or self.tick_count > self.episode_length
+        reward = self.reward_function(self.state, new_position, new_velocity)
 
-        self.state = (position, velocity)
+        self.state = (new_position, new_velocity)
         return np.array(self.state), reward, done, {}
 
-    def get_reward(self, state, position, velocity):
+    def get_reward_mod(self, state, position, velocity): #Example reward
         reward = 0
 
         if velocity > self.state[1] >= 0 and velocity >= 0:
@@ -123,11 +124,18 @@ class MountainCarEnv(gym.Env):
 
         return reward
 
-    def get_reward_alt(self, state, position, velocity):
+    def get_reward(self, state, position, velocity):
+        if position >= self.goal_position:
+            return 0
+        else:
+            return -1
+
+    def get_reward_energy(self, state, position, velocity): #Energy based reward
         return 100 if position >= self.goal_position else 100*((math.sin(3*position) * 0.0025 + 0.5 * velocity * velocity) - (math.sin(3*state[0]) * 0.0025 + 0.5 * state[1] * state[1])) 
 
     def reset(self):
-        self.state = np.array([-0.8, 0])
+        # self.state = np.array([-0.7, 0])
+        self.state = np.array([self.np_random.uniform(low=-0.6, high=-0.4), 0])
         self.tick_count = 0
         return np.array(self.state)
 
